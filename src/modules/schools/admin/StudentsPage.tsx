@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { supabase, callEdgeFunction } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Plus, Search, Edit, UserX, UserCheck } from 'lucide-react';
+import { Plus, Search, Edit, UserX, UserCheck, X, BookOpen } from 'lucide-react';
 
 interface Student {
   id: string;
@@ -10,6 +10,7 @@ interface Student {
   gender: string | null;
   is_active: boolean;
   profile: {
+    id: string;
     first_name: string;
     last_name: string;
     email: string | null;
@@ -17,20 +18,38 @@ interface Student {
   };
 }
 
+interface Subject { id: string; name: string; category: string; }
+
 export default function StudentsPage() {
   const { schoolId } = useAuth();
   const [students, setStudents] = useState<Student[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showElectiveModal, setShowElectiveModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [selectedElectives, setSelectedElectives] = useState<string[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
+  const [terms, setTerms] = useState<any[]>([]);
   const [form, setForm] = useState({
     first_name: '', last_name: '', email: '',
     phone: '', date_of_birth: '', gender: '', password: '',
   });
+  const [editForm, setEditForm] = useState({
+    first_name: '', last_name: '', phone: '',
+    date_of_birth: '', gender: '', is_active: true,
+  });
 
   useEffect(() => {
-    if (schoolId) fetchStudents();
+    if (schoolId) {
+      fetchStudents();
+      fetchSubjects();
+      fetchClasses();
+      fetchTerms();
+    }
   }, [schoolId]);
 
   const fetchStudents = async () => {
@@ -38,74 +57,169 @@ export default function StudentsPage() {
       .from('students')
       .select(`
         id, student_uid, date_of_birth, gender, is_active,
-        profile:profiles(first_name, last_name, email, phone)
+        profile:profiles(id, first_name, last_name, email, phone)
       `)
       .eq('school_id', schoolId)
       .order('created_at', { ascending: false });
-
     if (!error && data) setStudents(data as any);
     setLoading(false);
   };
 
+  const fetchSubjects = async () => {
+    const { data } = await supabase
+      .from('subjects')
+      .select('id, name, category')
+      .eq('school_id', schoolId)
+      .eq('is_active', true)
+      .order('name');
+    if (data) setSubjects(data);
+  };
+
+  const fetchClasses = async () => {
+    const { data } = await supabase
+      .from('classes')
+      .select('id, name, section')
+      .eq('school_id', schoolId)
+      .eq('is_active', true)
+      .order('name');
+    if (data) setClasses(data);
+  };
+
+  const fetchTerms = async () => {
+    const { data } = await supabase
+      .from('terms')
+      .select('id, name, is_current')
+      .eq('school_id', schoolId)
+      .order('start_date', { ascending: false });
+    if (data) setTerms(data);
+  };
+
   const handleCreate = async () => {
     if (!form.first_name || !form.last_name || !form.password) {
-      alert('Please fill in all required fields.');
+      alert('First name, last name and password are required.');
       return;
     }
     setSaving(true);
-
     try {
-      // Generate student UID
-      const { data: uidData } = await supabase
-        .rpc('generate_school_id', { p_school_id: schoolId, p_entity_type: 'student' });
-
-      // Create auth user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: form.email || `${uidData}@obogu.edu.gh`,
+      const result = await callEdgeFunction('create-school-user', {
+        email: form.email || `${Date.now()}@${schoolId}.internal`,
         password: form.password,
-      });
-
-      if (authError) throw authError;
-
-      // Create profile
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: authData?.user?.id,
-          school_id: schoolId,
-          role: 'student',
-          first_name: form.first_name,
-          last_name: form.last_name,
-          email: form.email || `${uidData}@obogu.edu.gh`,
-          phone: form.phone,
-          school_uid: uidData,
-        })
-        .select()
-        .single();
-
-      if (profileError) throw profileError;
-
-      // Create student record
-      await supabase.from('students').insert({
-        profile_id: profileData.id,
+        role: 'student',
         school_id: schoolId,
-        student_uid: uidData,
-        date_of_birth: form.date_of_birth || null,
-        gender: form.gender || null,
+        first_name: form.first_name,
+        last_name: form.last_name,
+        phone: form.phone,
+        metadata: {
+          date_of_birth: form.date_of_birth || null,
+          gender: form.gender || null,
+        },
       });
-
       setShowModal(false);
       setForm({ first_name: '', last_name: '', email: '', phone: '', date_of_birth: '', gender: '', password: '' });
       fetchStudents();
+      alert(`Student created! ID: ${result.school_uid}`);
     } catch (err: any) {
-      alert('Error creating student: ' + err.message);
+      alert('Error: ' + err.message);
     } finally {
       setSaving(false);
     }
   };
 
-  const toggleActive = async (id: string, currentStatus: boolean) => {
+  const openEdit = (student: Student) => {
+    setSelectedStudent(student);
+    setEditForm({
+      first_name: student.profile?.first_name ?? '',
+      last_name: student.profile?.last_name ?? '',
+      phone: student.profile?.phone ?? '',
+      date_of_birth: student.date_of_birth ?? '',
+      gender: student.gender ?? '',
+      is_active: student.is_active,
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEdit = async () => {
+    if (!selectedStudent) return;
+    setSaving(true);
+    try {
+      await supabase.from('profiles').update({
+        first_name: editForm.first_name,
+        last_name: editForm.last_name,
+        phone: editForm.phone || null,
+        is_active: editForm.is_active,
+      }).eq('id', selectedStudent.profile?.id);
+
+      await supabase.from('students').update({
+        date_of_birth: editForm.date_of_birth || null,
+        gender: editForm.gender || null,
+        is_active: editForm.is_active,
+      }).eq('id', selectedStudent.id);
+
+      setShowEditModal(false);
+      fetchStudents();
+      alert('Student updated successfully!');
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openElectives = async (student: Student) => {
+    setSelectedStudent(student);
+    // Load existing elective enrollments for this student
+    const currentTerm = terms.find((t) => t.is_current);
+    if (currentTerm) {
+      const { data } = await supabase
+        .from('enrollments')
+        .select('class_id')
+        .eq('student_id', student.id)
+        .eq('term_id', currentTerm.id)
+        .eq('is_active', true);
+      // For now just open with empty selection
+    }
+    setSelectedElectives([]);
+    setShowElectiveModal(true);
+  };
+
+  const handleSaveElectives = async () => {
+    if (!selectedStudent) return;
+    const currentTerm = terms.find((t) => t.is_current);
+    if (!currentTerm) {
+      alert('No current term found.');
+      return;
+    }
+    setSaving(true);
+    try {
+      // Save elective subject selections as class_subjects enrollments
+      for (const subjectId of selectedElectives) {
+        await supabase.from('class_subjects').upsert({
+          school_id: schoolId,
+          class_id: classes[0]?.id, // Default to first class — can be improved
+          subject_id: subjectId,
+          term_id: currentTerm.id,
+        }, { onConflict: 'class_id,subject_id,term_id' });
+      }
+      setShowElectiveModal(false);
+      alert('Elective subjects saved successfully!');
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleElective = (subjectId: string) => {
+    setSelectedElectives((prev) =>
+      prev.includes(subjectId)
+        ? prev.filter((id) => id !== subjectId)
+        : [...prev, subjectId]
+    );
+  };
+
+  const toggleActive = async (id: string, profileId: string, currentStatus: boolean) => {
     await supabase.from('students').update({ is_active: !currentStatus }).eq('id', id);
+    await supabase.from('profiles').update({ is_active: !currentStatus }).eq('id', profileId);
     fetchStudents();
   };
 
@@ -113,6 +227,9 @@ export default function StudentsPage() {
     `${s.profile?.first_name} ${s.profile?.last_name} ${s.student_uid}`
       .toLowerCase().includes(search.toLowerCase())
   );
+
+  const electiveSubjects = subjects.filter((s) => s.category === 'elective');
+  const coreSubjects = subjects.filter((s) => s.category === 'core');
 
   return (
     <div>
@@ -174,7 +291,7 @@ export default function StudentsPage() {
                     </div>
                   </div>
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-600">{student.student_uid}</td>
+                <td className="px-6 py-4 text-sm text-gray-600 font-mono">{student.student_uid}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{student.gender ?? '—'}</td>
                 <td className="px-6 py-4">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -185,12 +302,28 @@ export default function StudentsPage() {
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
-                    <button className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                    <button
+                      onClick={() => openEdit(student)}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Edit"
+                    >
                       <Edit className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => toggleActive(student.id, student.is_active)}
-                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      onClick={() => openElectives(student)}
+                      className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                      title="Select elective subjects"
+                    >
+                      <BookOpen className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => toggleActive(student.id, student.profile?.id, student.is_active)}
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        student.is_active
+                          ? 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                          : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
+                      }`}
+                      title={student.is_active ? 'Deactivate' : 'Activate'}
                     >
                       {student.is_active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
                     </button>
@@ -202,67 +335,56 @@ export default function StudentsPage() {
         </table>
       </div>
 
+      {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Add New Student</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900">Add New Student</h2>
+              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
-                  <input
-                    type="text"
-                    value={form.first_name}
+                  <input type="text" value={form.first_name}
                     onChange={(e) => setForm({ ...form, first_name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
-                  <input
-                    type="text"
-                    value={form.last_name}
+                  <input type="text" value={form.last_name}
                     onChange={(e) => setForm({ ...form, last_name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={form.email}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email (optional)</label>
+                <input type="email" value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  placeholder="Optional - auto-generated if empty"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  placeholder="Leave blank to auto-generate"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                <input
-                  type="text"
-                  value={form.phone}
+                <input type="text" value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
-                  <input
-                    type="date"
-                    value={form.date_of_birth}
+                  <input type="date" value={form.date_of_birth}
                     onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
-                  <select
-                    value={form.gender}
+                  <select value={form.gender}
                     onChange={(e) => setForm({ ...form, gender: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select</option>
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
@@ -271,27 +393,182 @@ export default function StudentsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Initial Password *</label>
-                <input
-                  type="password"
-                  value={form.password}
+                <input type="password" value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
             <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
-              >
+              <button onClick={() => setShowModal(false)}
+                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
                 Cancel
               </button>
-              <button
-                onClick={handleCreate}
-                disabled={saving}
-                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-              >
+              <button onClick={handleCreate} disabled={saving}
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                 {saving ? 'Creating...' : 'Create Student'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && selectedStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900">Edit Student</h2>
+              <button onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                  <input type="text" value={editForm.first_name}
+                    onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                  <input type="text" value={editForm.last_name}
+                    onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <input type="text" value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+                  <input type="date" value={editForm.date_of_birth}
+                    onChange={(e) => setEditForm({ ...editForm, date_of_birth: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+                  <select value={editForm.gender}
+                    onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Select</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select value={editForm.is_active ? 'active' : 'inactive'}
+                  onChange={(e) => setEditForm({ ...editForm, is_active: e.target.value === 'active' })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowEditModal(false)}
+                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={handleEdit} disabled={saving}
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                {saving ? 'Saving...' : 'Update Student'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Elective Subjects Modal */}
+      {showElectiveModal && selectedStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900">
+                Select Electives — {selectedStudent.profile?.first_name}
+              </h2>
+              <button onClick={() => setShowElectiveModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Core subjects — read only */}
+            <div className="mb-4">
+              <p className="text-sm font-medium text-gray-700 mb-2">
+                Core Subjects (compulsory for all students)
+              </p>
+              <div className="space-y-1">
+                {coreSubjects.length === 0 ? (
+                  <p className="text-sm text-gray-400">No core subjects added yet</p>
+                ) : coreSubjects.map((s) => (
+                  <div key={s.id} className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg">
+                    <div className="w-4 h-4 bg-blue-600 rounded flex items-center justify-center flex-shrink-0">
+                      <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                      </svg>
+                    </div>
+                    <span className="text-sm text-blue-800">{s.name}</span>
+                    <span className="ml-auto text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">Core</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Elective subjects — selectable */}
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">
+                Elective Subjects (select preferred subjects)
+              </p>
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {electiveSubjects.length === 0 ? (
+                  <p className="text-sm text-gray-400">No elective subjects added yet</p>
+                ) : electiveSubjects.map((s) => {
+                  const isSelected = selectedElectives.includes(s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => toggleElective(s.id)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors ${
+                        isSelected
+                          ? 'bg-purple-50 border border-purple-200'
+                          : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                        isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
+                      }`}>
+                        {isSelected && (
+                          <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                          </svg>
+                        )}
+                      </div>
+                      <span className={`text-sm ${isSelected ? 'text-purple-800 font-medium' : 'text-gray-700'}`}>
+                        {s.name}
+                      </span>
+                      <span className="ml-auto text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">
+                        Elective
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowElectiveModal(false)}
+                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={handleSaveElectives} disabled={saving}
+                className="flex-1 px-4 py-2.5 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
+                {saving ? 'Saving...' : 'Save Electives'}
               </button>
             </div>
           </div>

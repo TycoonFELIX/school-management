@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { 
   LayoutDashboard, Users, GraduationCap, BookOpen, 
   ClipboardList, BarChart2, Settings, 
-  LogOut, Menu, X, Bell, School, Calendar
+  LogOut, Menu, X, Bell, School, Calendar, UserPlus
 } from 'lucide-react';
 import DashboardHome from './admin/DashboardHome';
 import TeachersPage from './admin/TeachersPage';
@@ -11,17 +11,20 @@ import StudentsPage from './admin/StudentsPage';
 import ClassesPage from './admin/ClassesPage';
 import SubjectsPage from './admin/SubjectsPage';
 import AcademicYearsPage from './admin/AcademicYearsPage';
+import AttendancePage from './admin/AttendancePage';
+import EnrollmentsPage from './admin/EnrollmentsPage';
 
 const navigation = [
-  { name: 'Dashboard',       icon: LayoutDashboard, page: 'dashboard' },
-  { name: 'Academic Years',  icon: Calendar,        page: 'academic-years' },
-  { name: 'Classes',         icon: School,          page: 'classes' },
-  { name: 'Subjects',        icon: BookOpen,        page: 'subjects' },
-  { name: 'Teachers',        icon: GraduationCap,   page: 'teachers' },
-  { name: 'Students',        icon: Users,           page: 'students' },
-  { name: 'Attendance',      icon: ClipboardList,   page: 'attendance' },
-  { name: 'Reports',         icon: BarChart2,       page: 'reports' },
-  { name: 'Settings',        icon: Settings,        page: 'settings' },
+  { name: 'Dashboard',      icon: LayoutDashboard, page: 'dashboard' },
+  { name: 'Academic Years', icon: Calendar,        page: 'academic-years' },
+  { name: 'Classes',        icon: School,          page: 'classes' },
+  { name: 'Subjects',       icon: BookOpen,        page: 'subjects' },
+  { name: 'Teachers',       icon: GraduationCap,   page: 'teachers' },
+  { name: 'Students',       icon: Users,           page: 'students' },
+  { name: 'Enrollments',    icon: UserPlus,        page: 'enrollments' },
+  { name: 'Attendance',     icon: ClipboardList,   page: 'attendance' },
+  { name: 'Reports',        icon: BarChart2,       page: 'reports' },
+  { name: 'Settings',       icon: Settings,        page: 'settings' },
 ];
 
 export default function SchoolAdminDashboard() {
@@ -37,6 +40,8 @@ export default function SchoolAdminDashboard() {
       case 'students':       return <StudentsPage />;
       case 'classes':        return <ClassesPage />;
       case 'subjects':       return <SubjectsPage />;
+      case 'enrollments':    return <EnrollmentsPage />;
+      case 'attendance':     return <AttendancePage />;
       default: return (
         <div className="flex items-center justify-center h-64">
           <p className="text-gray-500 text-lg">Coming soon...</p>
@@ -47,11 +52,7 @@ export default function SchoolAdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-
-      {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-64' : 'w-16'} bg-white border-r border-gray-200 flex flex-col transition-all duration-300 fixed h-full z-10`}>
-
-        {/* Logo */}
         <div className="h-16 flex items-center px-4 border-b border-gray-200">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
             <School className="w-5 h-5 text-white" />
@@ -60,8 +61,6 @@ export default function SchoolAdminDashboard() {
             <span className="ml-3 font-bold text-gray-900 truncate">School Admin</span>
           )}
         </div>
-
-        {/* Navigation */}
         <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
           {navigation.map((item) => {
             const Icon = item.icon;
@@ -82,8 +81,6 @@ export default function SchoolAdminDashboard() {
             );
           })}
         </nav>
-
-        {/* Sign out */}
         <div className="p-2 border-t border-gray-200">
           <button
             onClick={signOut}
@@ -95,10 +92,7 @@ export default function SchoolAdminDashboard() {
         </div>
       </aside>
 
-      {/* Main content */}
       <div className={`flex-1 ${sidebarOpen ? 'ml-64' : 'ml-16'} transition-all duration-300`}>
-
-        {/* Top bar */}
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-10">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -106,7 +100,6 @@ export default function SchoolAdminDashboard() {
           >
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
-
           <div className="flex items-center gap-4">
             <button className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 relative">
               <Bell className="w-5 h-5" />
@@ -127,8 +120,6 @@ export default function SchoolAdminDashboard() {
             </div>
           </div>
         </header>
-
-        {/* Page content */}
         <main className="p-6">
           {renderPage()}
         </main>

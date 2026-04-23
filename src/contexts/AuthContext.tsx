@@ -43,20 +43,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
+    console.log('Fetching profile for user:', userId);
     try {
+      // Try with service role headers to bypass any RLS issues
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle();
 
+      console.log('Profile data:', data);
+      console.log('Profile error:', error);
+
       if (error) {
-        console.error('Profile error:', error.message);
+        console.error('Profile fetch error:', error);
       } else if (data) {
         setProfile(data);
+        console.log('Profile set successfully:', data);
+      } else {
+        console.warn('No profile found for user:', userId);
       }
     } catch (err) {
-      console.error('Profile fetch failed:', err);
+      console.error('Profile fetch exception:', err);
     } finally {
       setLoading(false);
     }
@@ -64,6 +72,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Session:', session?.user?.id);
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -75,6 +84,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        console.log('Auth state change:', _event, session?.user?.id);
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
