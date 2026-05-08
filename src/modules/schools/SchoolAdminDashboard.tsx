@@ -14,6 +14,7 @@ import AcademicYearsPage from './admin/AcademicYearsPage';
 import AttendancePage from './admin/AttendancePage';
 import EnrollmentsPage from './admin/EnrollmentsPage';
 import AssignmentsPage from './admin/AssignmentsPage';
+import ReportCardsPage from './admin/ReportCardsPage';
 
 const navigation = [
   { name: 'Dashboard',      icon: LayoutDashboard, page: 'dashboard' },
@@ -25,7 +26,7 @@ const navigation = [
   { name: 'Enrollments',    icon: UserPlus,        page: 'enrollments' },
   { name: 'Attendance',     icon: ClipboardList,   page: 'attendance' },
   { name: 'Assignments',    icon: FileText,        page: 'assignments' },
-  { name: 'Reports',        icon: BarChart2,       page: 'reports' },
+  { name: 'Report Cards',   icon: BarChart2,       page: 'report-cards' },
   { name: 'Settings',       icon: Settings,        page: 'settings' },
 ];
 
@@ -45,6 +46,7 @@ export default function SchoolAdminDashboard() {
       case 'enrollments':    return <EnrollmentsPage />;
       case 'attendance':     return <AttendancePage />;
       case 'assignments':    return <AssignmentsPage />;
+      case 'report-cards':   return <ReportCardsPage />;
       default: return (
         <div className="flex items-center justify-center h-64">
           <p className="text-gray-500 text-lg">Coming soon...</p>
