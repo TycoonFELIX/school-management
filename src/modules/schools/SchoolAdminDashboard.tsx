@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { 
   LayoutDashboard, Users, GraduationCap, BookOpen, 
   ClipboardList, BarChart2, Settings, 
-  LogOut, Menu, X, Bell, School, Calendar, UserPlus
+  LogOut, Menu, X, Bell, School, Calendar, UserPlus, FileText
 } from 'lucide-react';
 import DashboardHome from './admin/DashboardHome';
 import TeachersPage from './admin/TeachersPage';
@@ -13,6 +13,7 @@ import SubjectsPage from './admin/SubjectsPage';
 import AcademicYearsPage from './admin/AcademicYearsPage';
 import AttendancePage from './admin/AttendancePage';
 import EnrollmentsPage from './admin/EnrollmentsPage';
+import AssignmentsPage from './admin/AssignmentsPage';
 
 const navigation = [
   { name: 'Dashboard',      icon: LayoutDashboard, page: 'dashboard' },
@@ -23,6 +24,7 @@ const navigation = [
   { name: 'Students',       icon: Users,           page: 'students' },
   { name: 'Enrollments',    icon: UserPlus,        page: 'enrollments' },
   { name: 'Attendance',     icon: ClipboardList,   page: 'attendance' },
+  { name: 'Assignments',    icon: FileText,        page: 'assignments' },
   { name: 'Reports',        icon: BarChart2,       page: 'reports' },
   { name: 'Settings',       icon: Settings,        page: 'settings' },
 ];
@@ -42,6 +44,7 @@ export default function SchoolAdminDashboard() {
       case 'subjects':       return <SubjectsPage />;
       case 'enrollments':    return <EnrollmentsPage />;
       case 'attendance':     return <AttendancePage />;
+      case 'assignments':    return <AssignmentsPage />;
       default: return (
         <div className="flex items-center justify-center h-64">
           <p className="text-gray-500 text-lg">Coming soon...</p>
