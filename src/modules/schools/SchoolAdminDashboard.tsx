@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-  LayoutDashboard, Users, GraduationCap, BookOpen, 
-  ClipboardList, BarChart2, Settings, 
-  LogOut, Menu, X, Bell, School, Calendar, UserPlus, FileText, Megaphone
+import {
+  LayoutDashboard, Users, GraduationCap, BookOpen,
+  ClipboardList, BarChart2, Settings, LogOut, Menu, X,
+  Bell, School, Calendar, UserPlus, FileText, Megaphone, CreditCard
 } from 'lucide-react';
 import DashboardHome from './admin/DashboardHome';
 import TeachersPage from './admin/TeachersPage';
@@ -16,6 +16,9 @@ import EnrollmentsPage from './admin/EnrollmentsPage';
 import AssignmentsPage from './admin/AssignmentsPage';
 import ReportCardsPage from './admin/ReportCardsPage';
 import AnnouncementsPage from './admin/AnnouncementsPage';
+import AnalyticsPage from './admin/AnalyticsPage';
+import SettingsPage from './admin/SettingsPage';
+import BillingPage from './admin/BillingPage';
 
 const navigation = [
   { name: 'Dashboard',      icon: LayoutDashboard, page: 'dashboard' },
@@ -29,6 +32,8 @@ const navigation = [
   { name: 'Assignments',    icon: FileText,        page: 'assignments' },
   { name: 'Report Cards',   icon: BarChart2,       page: 'report-cards' },
   { name: 'Announcements',  icon: Megaphone,       page: 'announcements' },
+  { name: 'Analytics',      icon: BarChart2,       page: 'analytics' },
+  { name: 'Billing',        icon: CreditCard,      page: 'billing' },
   { name: 'Settings',       icon: Settings,        page: 'settings' },
 ];
 
@@ -50,6 +55,9 @@ export default function SchoolAdminDashboard() {
       case 'assignments':    return <AssignmentsPage />;
       case 'report-cards':   return <ReportCardsPage />;
       case 'announcements':  return <AnnouncementsPage />;
+      case 'analytics':      return <AnalyticsPage />;
+      case 'billing':        return <BillingPage />;
+      case 'settings':       return <SettingsPage />;
       default: return (
         <div className="flex items-center justify-center h-64">
           <p className="text-gray-500 text-lg">Coming soon...</p>
@@ -65,24 +73,17 @@ export default function SchoolAdminDashboard() {
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
             <School className="w-5 h-5 text-white" />
           </div>
-          {sidebarOpen && (
-            <span className="ml-3 font-bold text-gray-900 truncate">School Admin</span>
-          )}
+          {sidebarOpen && <span className="ml-3 font-bold text-gray-900 truncate">School Admin</span>}
         </div>
         <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
           {navigation.map((item) => {
             const Icon = item.icon;
             const isActive = currentPage === item.page;
             return (
-              <button
-                key={item.page}
-                onClick={() => setCurrentPage(item.page)}
+              <button key={item.page} onClick={() => setCurrentPage(item.page)}
                 className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                }`}
-              >
+                  isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                }`}>
                 <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-blue-700' : 'text-gray-400'}`} />
                 {sidebarOpen && <span className="ml-3">{item.name}</span>}
               </button>
@@ -90,10 +91,7 @@ export default function SchoolAdminDashboard() {
           })}
         </nav>
         <div className="p-2 border-t border-gray-200">
-          <button
-            onClick={signOut}
-            className="w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
-          >
+          <button onClick={signOut} className="w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
             <LogOut className="w-5 h-5 flex-shrink-0" />
             {sidebarOpen && <span className="ml-3">Sign Out</span>}
           </button>
@@ -102,10 +100,7 @@ export default function SchoolAdminDashboard() {
 
       <div className={`flex-1 ${sidebarOpen ? 'ml-64' : 'ml-16'} transition-all duration-300`}>
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-10">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100"
-          >
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100">
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
           <div className="flex items-center gap-4">
@@ -120,17 +115,13 @@ export default function SchoolAdminDashboard() {
                 </span>
               </div>
               <div className="hidden md:block">
-                <p className="text-sm font-medium text-gray-900">
-                  {profile?.first_name} {profile?.last_name}
-                </p>
+                <p className="text-sm font-medium text-gray-900">{profile?.first_name} {profile?.last_name}</p>
                 <p className="text-xs text-gray-500">School Admin</p>
               </div>
             </div>
           </div>
         </header>
-        <main className="p-6">
-          {renderPage()}
-        </main>
+        <main className="p-6">{renderPage()}</main>
       </div>
     </div>
   );
