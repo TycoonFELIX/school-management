@@ -1,24 +1,82 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { handleError, handleSuccess, formatDate, isOverdue, formatFileSize, validateFileSize, validateFileType, ALLOWED_DOCUMENT_TYPES } from '../../../lib/utils';
-import type { Assignment, ClassSubject, Term } from '../../../types';
+import { handleError, handleSuccess, formatDate, formatFileSize, validateFileSize, validateFileType, ALLOWED_DOCUMENT_TYPES } from '../../../lib/utils';
 import { Plus, Search, Edit, Trash2, X, FileText, Clock, Upload, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-interface AssignmentWithFiles extends Assignment {
-  assignment_files: { id: string; file_name: string; file_url: string; mime_type: string | null; file_size: number | null }[];
+interface AssignmentFile {
+  id: string;
+  file_name: string;
+  file_url: string;
+  mime_type: string | null;
+  file_size: number | null;
+}
+
+interface AssignmentItem {
+  id: string;
+  title: string;
+  description: string | null;
+  instructions: string | null;
+  due_date: string;
+  weight: number;
+  max_score: number;
+  is_published: boolean;
+  allow_late: boolean;
+  teacher_id: string | null;
+  class_subject: {
+    id: string;
+    teacher_id: string | null;
+    class: { name: string; section: string | null } | null;
+    subject: { name: string } | null;
+  } | null;
+  term: { name: string } | null;
+  assignment_files: AssignmentFile[];
+}
+
+interface UploadedFile {
+  name: string;
+  url: string;
+  size: number;
+  type: string;
+}
+
+interface FormState {
+  title: string;
+  description: string;
+  instructions: string;
+  class_subject_id: string;
+  term_id: string;
+  due_date: string;
+  weight: string;
+  max_score: string;
+  allow_late: boolean;
+  late_penalty: string;
+  is_published: boolean;
+}
+
+interface ClassSubjectItem {
+  id: string;
+  teacher_id: string | null;
+  class: { name: string; section: string | null } | null;
+  subject: { name: string } | null;
+}
+
+interface TermItem {
+  id: string;
+  name: string;
+  is_current: boolean;
 }
 
 interface FormProps {
-  form: any;
-  setForm: (f: any) => void;
-  classSubjects: ClassSubject[];
-  terms: Term[];
-  uploadedFiles: { name: string; url: string; size: number; type: string }[];
-  setUploadedFiles: React.Dispatch<React.SetStateAction<{ name: string; url: string; size: number; type: string }[]>>;
+  form: FormState;
+  setForm: (f: FormState) => void;
+  classSubjects: ClassSubjectItem[];
+  terms: TermItem[];
+  uploadedFiles: UploadedFile[];
+  setUploadedFiles: React.Dispatch<React.SetStateAction<UploadedFile[]>>;
   isEdit?: boolean;
-  fileInputRef: React.RefObject<HTMLInputElement>;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
   uploading: boolean;
   setUploading: (v: boolean) => void;
   schoolId: string | null;
@@ -31,24 +89,16 @@ const AssignmentForm = ({
 
   const handleFileUpload = async (files: FileList) => {
     setUploading(true);
-    const newFiles: { name: string; url: string; size: number; type: string }[] = [];
+    const newFiles: UploadedFile[] = [];
     for (const file of Array.from(files)) {
-      if (!validateFileSize(file, 50)) {
-        toast.error(`${file.name} is too large. Max 50MB.`);
-        continue;
-      }
-      if (!validateFileType(file, ALLOWED_DOCUMENT_TYPES)) {
-        toast.error(`${file.name} is not an allowed file type.`);
-        continue;
-      }
+      if (!validateFileSize(file, 50)) { toast.error(`${file.name} is too large. Max 50MB.`); continue; }
+      if (!validateFileType(file, ALLOWED_DOCUMENT_TYPES)) { toast.error(`${file.name} type not allowed.`); continue; }
       const filePath = `schools/${schoolId}/assignments/${Date.now()}_${file.name}`;
       const { error } = await supabase.storage.from('assignments').upload(filePath, file, { upsert: true });
       if (!error) {
         const { data: urlData } = supabase.storage.from('assignments').getPublicUrl(filePath);
         newFiles.push({ name: file.name, url: urlData.publicUrl, size: file.size, type: file.type });
-      } else {
-        toast.error(`Failed to upload ${file.name}`);
-      }
+      } else { toast.error(`Failed to upload ${file.name}`); }
     }
     setUploadedFiles((prev) => [...prev, ...newFiles]);
     setUploading(false);
@@ -73,7 +123,7 @@ const AssignmentForm = ({
               <option value="">Select Class & Subject</option>
               {classSubjects.map((cs) => (
                 <option key={cs.id} value={cs.id}>
-                  {(cs.class as any)?.name} {(cs.class as any)?.section ?? ''} — {(cs.subject as any)?.name}
+                  {cs.class?.name} {cs.class?.section ?? ''} — {cs.subject?.name}
                 </option>
               ))}
             </select>
@@ -174,19 +224,19 @@ const AssignmentForm = ({
 
 export default function AssignmentsPage() {
   const { schoolId } = useAuth();
-  const [assignments, setAssignments] = useState<AssignmentWithFiles[]>([]);
-  const [classSubjects, setClassSubjects] = useState<ClassSubject[]>([]);
-  const [terms, setTerms] = useState<Term[]>([]);
+  const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
+  const [classSubjects, setClassSubjects] = useState<ClassSubjectItem[]>([]);
+  const [terms, setTerms] = useState<TermItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [selectedAssignment, setSelectedAssignment] = useState<AssignmentWithFiles | null>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<{ name: string; url: string; size: number; type: string }[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [form, setForm] = useState({
+  const [selectedAssignment, setSelectedAssignment] = useState<AssignmentItem | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [form, setForm] = useState<FormState>({
     title: '', description: '', instructions: '',
     class_subject_id: '', term_id: '', due_date: '',
     weight: '100', max_score: '100', allow_late: false,
@@ -214,7 +264,7 @@ export default function AssignmentsPage() {
       .eq('school_id', schoolId)
       .eq('is_active', true)
       .order('created_at', { ascending: false });
-    if (error) { handleError(error); return; }
+    if (error) { handleError(error); setLoading(false); return; }
     if (data) setAssignments(data as any);
     setLoading(false);
   };
@@ -230,11 +280,11 @@ export default function AssignmentsPage() {
 
   const fetchTerms = async () => {
     const { data, error } = await supabase
-      .from('terms').select('id, name, is_current, term_number, start_date, end_date, is_closed, closed_at, school_id, academic_year_id')
+      .from('terms').select('id, name, is_current')
       .eq('school_id', schoolId).order('start_date', { ascending: false });
     if (error) { handleError(error); return; }
     if (data) {
-      setTerms(data as any);
+      setTerms(data);
       const current = data.find((t) => t.is_current);
       if (current) setForm((f) => ({ ...f, term_id: current.id }));
     }
@@ -257,7 +307,6 @@ export default function AssignmentsPage() {
 
     setSaving(true);
     try {
-      // Get teacher_id from class_subject
       const cs = classSubjects.find((c) => c.id === form.class_subject_id);
       const teacherId = cs?.teacher_id ?? null;
 
@@ -296,7 +345,7 @@ export default function AssignmentsPage() {
     finally { setSaving(false); }
   };
 
-  const openEdit = (assignment: AssignmentWithFiles) => {
+  const openEdit = (assignment: AssignmentItem) => {
     setSelectedAssignment(assignment);
     setForm({
       title: assignment.title,
@@ -378,11 +427,11 @@ export default function AssignmentsPage() {
   };
 
   const filtered = assignments.filter((a) =>
-    `${a.title} ${(a.class_subject as any)?.subject?.name} ${(a.class_subject as any)?.class?.name}`
+    `${a.title} ${a.class_subject?.subject?.name ?? ''} ${a.class_subject?.class?.name ?? ''}`
       .toLowerCase().includes(search.toLowerCase())
   );
 
-  const formProps = {
+  const formProps: FormProps = {
     form, setForm, classSubjects, terms, uploadedFiles,
     setUploadedFiles, fileInputRef, uploading, setUploading, schoolId,
   };
@@ -422,7 +471,7 @@ export default function AssignmentsPage() {
                 <div className="flex-1">
                   <h3 className="text-base font-semibold text-gray-900">{assignment.title}</h3>
                   <p className="text-sm text-gray-500 mt-0.5">
-                    {(assignment.class_subject as any)?.class?.name} {(assignment.class_subject as any)?.class?.section ?? ''} — {(assignment.class_subject as any)?.subject?.name}
+                    {assignment.class_subject?.class?.name} {assignment.class_subject?.class?.section ?? ''} — {assignment.class_subject?.subject?.name}
                   </p>
                 </div>
                 <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -440,9 +489,6 @@ export default function AssignmentsPage() {
                 <span className="flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5" />
                   Due: {formatDate(assignment.due_date)}
-                  {isOverdue(assignment.due_date) && !assignment.is_published === false && (
-                    <span className="text-red-500 ml-1">• Overdue</span>
-                  )}
                 </span>
                 <span>Weight: {assignment.weight}%</span>
                 <span>Max: {assignment.max_score}</span>
@@ -487,7 +533,6 @@ export default function AssignmentsPage() {
         </div>
       )}
 
-      {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
@@ -507,7 +552,6 @@ export default function AssignmentsPage() {
         </div>
       )}
 
-      {/* Edit Modal */}
       {showEditModal && selectedAssignment && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
