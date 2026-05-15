@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Plus, Search, FileText, Download, CheckCircle, X, Eye } from 'lucide-react';
+import { Plus, Search, Download, CheckCircle, X, Eye } from 'lucide-react';
 
 interface ReportCard {
   id: string;
@@ -147,7 +147,7 @@ export default function ReportCardsPage() {
     }
   };
 
-  const calculateGrade = (score: number, schoolSettings?: any): string => {
+  const calculateGrade = (score: number): string => {
     if (score >= 80) return 'A';
     if (score >= 70) return 'B';
     if (score >= 60) return 'C';
