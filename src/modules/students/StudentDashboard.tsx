@@ -49,6 +49,7 @@ export default function StudentDashboard() {
         .eq('is_active', true);
 
       if (enrollments && enrollments.length > 0) {
+        const _classIds = enrollments.map((e: any) => e.class_id);
         const { data: assignmentsData } = await supabase
           .from('assignments')
           .select(`
