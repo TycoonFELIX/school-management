@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Plus, Search, Download, CheckCircle, X, Eye } from 'lucide-react';
+import { Plus, Search, Eye, CheckCircle, X, Download } from 'lucide-react';
+import toast from 'react-hot-toast';
+
+interface ReportCardSubject {
+  id: string;
+  score: number | null;
+  grade: string | null;
+  position: number | null;
+  teacher_remark: string | null;
+  subject: { name: string; category: string };
+}
 
 interface ReportCard {
   id: string;
@@ -21,14 +31,13 @@ interface ReportCard {
   };
   class: { name: string; section: string | null };
   term: { name: string };
-  report_card_subjects: {
-    id: string;
-    score: number | null;
-    grade: string | null;
-    position: number | null;
-    teacher_remark: string | null;
-    subject: { name: string; category: string };
-  }[];
+  report_card_subjects: ReportCardSubject[];
+}
+
+interface SubjectScore {
+  score: string;
+  grade: string;
+  remark: string;
 }
 
 export default function ReportCardsPage() {
@@ -48,15 +57,11 @@ export default function ReportCardsPage() {
   const [generating, setGenerating] = useState(false);
   const [selectedCard, setSelectedCard] = useState<ReportCard | null>(null);
   const [form, setForm] = useState({
-    student_id: '',
-    class_id: '',
-    term_id: '',
-    attendance_days: '',
-    present_days: '',
-    principal_remark: '',
-    class_teacher_remark: '',
+    student_id: '', class_id: '', term_id: '',
+    attendance_days: '', present_days: '',
+    principal_remark: '', class_teacher_remark: '',
   });
-  const [subjectScores, setSubjectScores] = useState<Record<string, { score: string; grade: string; remark: string }>>({});
+  const [subjectScores, setSubjectScores] = useState<Record<string, SubjectScore>>({});
 
   useEffect(() => {
     if (schoolId) {
@@ -69,9 +74,11 @@ export default function ReportCardsPage() {
   }, [schoolId]);
 
   useEffect(() => {
-    // Set current term as default
     const current = terms.find((t) => t.is_current);
-    if (current) setFilterTerm(current.id);
+    if (current) {
+      setFilterTerm(current.id);
+      setForm((f) => ({ ...f, term_id: current.id }));
+    }
   }, [terms]);
 
   const fetchReportCards = async () => {
@@ -94,54 +101,36 @@ export default function ReportCardsPage() {
       `)
       .eq('school_id', schoolId)
       .order('created_at', { ascending: false });
-
-    if (!error && data) setReportCards(data as any);
+    if (error) { toast.error('Failed to load report cards'); setLoading(false); return; }
+    if (data) setReportCards(data as any);
     setLoading(false);
   };
 
   const fetchClasses = async () => {
-    const { data } = await supabase
-      .from('classes')
-      .select('id, name, section')
-      .eq('school_id', schoolId)
-      .eq('is_active', true)
-      .order('name');
+    const { data } = await supabase.from('classes').select('id, name, section')
+      .eq('school_id', schoolId).eq('is_active', true).order('name');
     if (data) setClasses(data);
   };
 
   const fetchTerms = async () => {
-    const { data } = await supabase
-      .from('terms')
-      .select('id, name, is_current')
-      .eq('school_id', schoolId)
-      .order('start_date', { ascending: false });
-    if (data) {
-      setTerms(data);
-      const current = data.find((t) => t.is_current);
-      if (current) setForm((f) => ({ ...f, term_id: current.id }));
-    }
+    const { data } = await supabase.from('terms').select('id, name, is_current')
+      .eq('school_id', schoolId).order('start_date', { ascending: false });
+    if (data) setTerms(data);
   };
 
   const fetchStudents = async () => {
-    const { data } = await supabase
-      .from('students')
+    const { data } = await supabase.from('students')
       .select('id, student_uid, profile:profiles(first_name, last_name)')
-      .eq('school_id', schoolId)
-      .eq('is_active', true)
-      .order('created_at');
+      .eq('school_id', schoolId).eq('is_active', true).order('created_at');
     if (data) setStudents(data as any);
   };
 
   const fetchSubjects = async () => {
-    const { data } = await supabase
-      .from('subjects')
-      .select('id, name, category')
-      .eq('school_id', schoolId)
-      .eq('is_active', true)
-      .order('name');
+    const { data } = await supabase.from('subjects').select('id, name, category')
+      .eq('school_id', schoolId).eq('is_active', true).order('name');
     if (data) {
       setSubjects(data);
-      const initial: Record<string, { score: string; grade: string; remark: string }> = {};
+      const initial: Record<string, SubjectScore> = {};
       data.forEach((s) => { initial[s.id] = { score: '', grade: '', remark: '' }; });
       setSubjectScores(initial);
     }
@@ -155,50 +144,50 @@ export default function ReportCardsPage() {
     return 'F';
   };
 
+  const gradeColor = (grade: string | null): string => {
+    switch (grade) {
+      case 'A': return 'text-green-600 font-bold';
+      case 'B': return 'text-blue-600 font-bold';
+      case 'C': return 'text-yellow-600 font-bold';
+      case 'D': return 'text-orange-600 font-bold';
+      case 'F': return 'text-red-600 font-bold';
+      default:  return 'text-gray-400';
+    }
+  };
+
   const handleScoreChange = (subjectId: string, score: string) => {
     const numScore = parseFloat(score);
     const grade = !isNaN(numScore) ? calculateGrade(numScore) : '';
-    setSubjectScores((prev) => ({
-      ...prev,
-      [subjectId]: { ...prev[subjectId], score, grade },
-    }));
+    setSubjectScores((prev) => ({ ...prev, [subjectId]: { ...prev[subjectId], score, grade } }));
   };
 
   const handleCreate = async () => {
     if (!form.student_id || !form.class_id || !form.term_id) {
-      alert('Student, class and term are required.');
-      return;
+      toast.error('Student, class and term are required'); return;
     }
     setSaving(true);
     try {
-      // Calculate totals
       const scores = Object.values(subjectScores)
         .filter((s) => s.score !== '')
         .map((s) => parseFloat(s.score));
       const totalScore = scores.reduce((a, b) => a + b, 0);
       const averageScore = scores.length > 0 ? totalScore / scores.length : 0;
 
-      // Create report card
-      const { data: rc, error: rcError } = await supabase
-        .from('report_cards')
-        .insert({
-          school_id: schoolId,
-          student_id: form.student_id,
-          class_id: form.class_id,
-          term_id: form.term_id,
-          total_score: totalScore,
-          average_score: parseFloat(averageScore.toFixed(2)),
-          attendance_days: parseInt(form.attendance_days) || null,
-          present_days: parseInt(form.present_days) || null,
-          principal_remark: form.principal_remark || null,
-          class_teacher_remark: form.class_teacher_remark || null,
-        })
-        .select()
-        .single();
+      const { data: rc, error: rcError } = await supabase.from('report_cards').insert({
+        school_id: schoolId,
+        student_id: form.student_id,
+        class_id: form.class_id,
+        term_id: form.term_id,
+        total_score: totalScore,
+        average_score: parseFloat(averageScore.toFixed(2)),
+        attendance_days: parseInt(form.attendance_days) || null,
+        present_days: parseInt(form.present_days) || null,
+        principal_remark: form.principal_remark || null,
+        class_teacher_remark: form.class_teacher_remark || null,
+      }).select().single();
 
       if (rcError) throw rcError;
 
-      // Create subject scores
       const subjectRows = subjects
         .filter((s) => subjectScores[s.id]?.score !== '')
         .map((s) => ({
@@ -211,49 +200,26 @@ export default function ReportCardsPage() {
         }));
 
       if (subjectRows.length > 0) {
-        await supabase.from('report_card_subjects').insert(subjectRows);
+        const { error: subErr } = await supabase.from('report_card_subjects').insert(subjectRows);
+        if (subErr) throw subErr;
       }
-
-      // Calculate class positions
-      await calculatePositions(form.term_id, form.class_id);
 
       setShowModal(false);
       resetForm();
       fetchReportCards();
-      alert('Report card created successfully!');
-    } catch (err: any) {
-      alert('Error: ' + err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const calculatePositions = async (termId: string, classId: string) => {
-    const { data } = await supabase
-      .rpc('calculate_class_positions', {
-        p_term_id: termId,
-        p_class_id: classId,
-      });
-
-    if (data) {
-      for (const row of data) {
-        await supabase
-          .from('report_cards')
-          .update({ class_position: row.class_position })
-          .eq('student_id', row.student_id)
-          .eq('term_id', termId);
-      }
-    }
+      toast.success('Report card created successfully!');
+    } catch (err: any) { toast.error('Error: ' + err.message); }
+    finally { setSaving(false); }
   };
 
   const handleApprove = async (id: string) => {
-    if (!confirm('Approve this report card? Grades will be locked after approval.')) return;
-    await supabase.from('report_cards').update({
-      is_approved: true,
-      approved_at: new Date().toISOString(),
+    if (!confirm('Approve this report card? Grades will be locked.')) return;
+    const { error } = await supabase.from('report_cards').update({
+      is_approved: true, approved_at: new Date().toISOString(),
     }).eq('id', id);
+    if (error) { toast.error('Failed to approve'); return; }
     fetchReportCards();
-    alert('Report card approved and locked!');
+    toast.success('Report card approved and locked!');
   };
 
   const handleGeneratePDF = async (reportCardId: string) => {
@@ -276,14 +242,12 @@ export default function ReportCardsPage() {
       if (result.pdf_url) {
         window.open(result.pdf_url, '_blank');
         fetchReportCards();
+        toast.success('PDF generated!');
       } else {
-        alert('PDF generation failed: ' + (result.error ?? 'Unknown error'));
+        toast.error('PDF generation failed: ' + (result.error ?? 'Unknown error'));
       }
-    } catch (err: any) {
-      alert('Error generating PDF: ' + err.message);
-    } finally {
-      setGenerating(false);
-    }
+    } catch (err: any) { toast.error('Error generating PDF: ' + err.message); }
+    finally { setGenerating(false); }
   };
 
   const resetForm = () => {
@@ -293,7 +257,7 @@ export default function ReportCardsPage() {
       attendance_days: '', present_days: '',
       principal_remark: '', class_teacher_remark: '',
     });
-    const initial: Record<string, { score: string; grade: string; remark: string }> = {};
+    const initial: Record<string, SubjectScore> = {};
     subjects.forEach((s) => { initial[s.id] = { score: '', grade: '', remark: '' }; });
     setSubjectScores(initial);
   };
@@ -313,40 +277,31 @@ export default function ReportCardsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Report Cards</h1>
           <p className="text-gray-500 mt-1">{reportCards.length} report cards generated</p>
         </div>
-        <button
-          onClick={() => { resetForm(); setShowModal(true); }}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Create Report Card
+        <button onClick={() => { resetForm(); setShowModal(true); }}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">
+          <Plus className="w-4 h-4" /> Create Report Card
         </button>
       </div>
 
-      {/* Filters */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input type="text" placeholder="Search students..."
-            value={search} onChange={(e) => setSearch(e.target.value)}
+          <input type="text" placeholder="Search students..." value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
         </div>
         <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)}
           className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
           <option value="">All Classes</option>
-          {classes.map((c) => (
-            <option key={c.id} value={c.id}>{c.name} {c.section ? `- ${c.section}` : ''}</option>
-          ))}
+          {classes.map((c) => <option key={c.id} value={c.id}>{c.name} {c.section ?? ''}</option>)}
         </select>
         <select value={filterTerm} onChange={(e) => setFilterTerm(e.target.value)}
           className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
           <option value="">All Terms</option>
-          {terms.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
+          {terms.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       </div>
 
-      {/* Report cards table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
@@ -370,7 +325,7 @@ export default function ReportCardsPage() {
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                      <span className="text-blue-700 text-sm font-medium">
+                      <span className="text-blue-700 text-xs font-medium">
                         {rc.student?.profile?.first_name?.[0]}{rc.student?.profile?.last_name?.[0]}
                       </span>
                     </div>
@@ -378,53 +333,39 @@ export default function ReportCardsPage() {
                       <p className="text-sm font-medium text-gray-900">
                         {rc.student?.profile?.first_name} {rc.student?.profile?.last_name}
                       </p>
-                      <p className="text-xs text-gray-500">{rc.student?.student_uid}</p>
+                      <p className="text-xs text-gray-500 font-mono">{rc.student?.student_uid}</p>
                     </div>
                   </div>
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-600">
-                  {rc.class?.name} {rc.class?.section ?? ''}
-                </td>
+                <td className="px-6 py-4 text-sm text-gray-600">{rc.class?.name} {rc.class?.section ?? ''}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{rc.term?.name}</td>
-                <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                <td className="px-6 py-4 text-sm font-semibold text-gray-900">
                   {rc.average_score?.toFixed(1) ?? '—'}%
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-600">
-                  {rc.class_position ? `${rc.class_position}` : '—'}
+                  {rc.class_position ? `${rc.class_position}${rc.class_position === 1 ? 'st' : rc.class_position === 2 ? 'nd' : rc.class_position === 3 ? 'rd' : 'th'}` : '—'}
                 </td>
                 <td className="px-6 py-4">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    rc.is_approved
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-yellow-100 text-yellow-700'
+                    rc.is_approved ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
                   }`}>
                     {rc.is_approved ? 'Approved' : 'Pending'}
                   </span>
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => { setSelectedCard(rc); setShowViewModal(true); }}
-                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="View"
-                    >
+                    <button onClick={() => { setSelectedCard(rc); setShowViewModal(true); }}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="View">
                       <Eye className="w-4 h-4" />
                     </button>
                     {!rc.is_approved && (
-                      <button
-                        onClick={() => handleApprove(rc.id)}
-                        className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                        title="Approve"
-                      >
+                      <button onClick={() => handleApprove(rc.id)}
+                        className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg" title="Approve">
                         <CheckCircle className="w-4 h-4" />
                       </button>
                     )}
-                    <button
-                      onClick={() => handleGeneratePDF(rc.id)}
-                      disabled={generating}
-                      className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                      title="Generate PDF"
-                    >
+                    <button onClick={() => handleGeneratePDF(rc.id)} disabled={generating}
+                      className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg" title="Generate PDF">
                       <Download className="w-4 h-4" />
                     </button>
                   </div>
@@ -441,50 +382,40 @@ export default function ReportCardsPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-gray-900">Create Report Card</h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Student *</label>
-                <select value={form.student_id}
-                  onChange={(e) => setForm({ ...form, student_id: e.target.value })}
+                <select value={form.student_id} onChange={(e) => setForm({ ...form, student_id: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Select Student</option>
                   {students.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.profile?.first_name} {s.profile?.last_name} ({s.student_uid})
+                      {(s.profile as any)?.first_name} {(s.profile as any)?.last_name} ({s.student_uid})
                     </option>
                   ))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Class *</label>
-                <select value={form.class_id}
-                  onChange={(e) => setForm({ ...form, class_id: e.target.value })}
+                <select value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Select Class</option>
-                  {classes.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name} {c.section ?? ''}</option>
-                  ))}
+                  {classes.map((c) => <option key={c.id} value={c.id}>{c.name} {c.section ?? ''}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Term *</label>
-                <select value={form.term_id}
-                  onChange={(e) => setForm({ ...form, term_id: e.target.value })}
+                <select value={form.term_id} onChange={(e) => setForm({ ...form, term_id: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Select Term</option>
-                  {terms.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name} {t.is_current ? '(Current)' : ''}</option>
-                  ))}
+                  {terms.map((t) => <option key={t.id} value={t.id}>{t.name} {t.is_current ? '(Current)' : ''}</option>)}
                 </select>
               </div>
             </div>
 
-            {/* Subject scores */}
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Subject Scores</h3>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -492,8 +423,8 @@ export default function ReportCardsPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Subject</th>
-                      <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Category</th>
-                      <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Score</th>
+                      <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Type</th>
+                      <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Score /100</th>
                       <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Grade</th>
                       <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Remark</th>
                     </tr>
@@ -504,46 +435,28 @@ export default function ReportCardsPage() {
                         <td className="px-4 py-2 text-sm text-gray-900">{subject.name}</td>
                         <td className="px-4 py-2">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            subject.category === 'core'
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-purple-100 text-purple-700'
-                          }`}>
-                            {subject.category}
-                          </span>
+                            subject.category === 'core' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                          }`}>{subject.category}</span>
                         </td>
                         <td className="px-4 py-2">
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
+                          <input type="number" min="0" max="100"
                             value={subjectScores[subject.id]?.score ?? ''}
                             onChange={(e) => handleScoreChange(subject.id, e.target.value)}
                             placeholder="0-100"
-                            className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          />
+                            className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
                         </td>
                         <td className="px-4 py-2">
-                          <span className={`text-sm font-semibold ${
-                            subjectScores[subject.id]?.grade === 'A' ? 'text-green-600' :
-                            subjectScores[subject.id]?.grade === 'B' ? 'text-blue-600' :
-                            subjectScores[subject.id]?.grade === 'C' ? 'text-yellow-600' :
-                            subjectScores[subject.id]?.grade === 'D' ? 'text-orange-600' :
-                            subjectScores[subject.id]?.grade === 'F' ? 'text-red-600' : 'text-gray-400'
-                          }`}>
+                          <span className={`text-sm ${gradeColor(subjectScores[subject.id]?.grade ?? null)}`}>
                             {subjectScores[subject.id]?.grade || '—'}
                           </span>
                         </td>
                         <td className="px-4 py-2">
-                          <input
-                            type="text"
-                            value={subjectScores[subject.id]?.remark ?? ''}
+                          <input type="text" value={subjectScores[subject.id]?.remark ?? ''}
                             onChange={(e) => setSubjectScores((prev) => ({
-                              ...prev,
-                              [subject.id]: { ...prev[subject.id], remark: e.target.value }
+                              ...prev, [subject.id]: { ...prev[subject.id], remark: e.target.value }
                             }))}
-                            placeholder="Teacher's remark"
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          />
+                            placeholder="Remark"
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
                         </td>
                       </tr>
                     ))}
@@ -552,7 +465,6 @@ export default function ReportCardsPage() {
               </div>
             </div>
 
-            {/* Attendance & Remarks */}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Total School Days</label>
@@ -584,9 +496,7 @@ export default function ReportCardsPage() {
 
             <div className="flex gap-3">
               <button onClick={() => setShowModal(false)}
-                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
-                Cancel
-              </button>
+                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">Cancel</button>
               <button onClick={handleCreate} disabled={saving}
                 className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                 {saving ? 'Creating...' : 'Create Report Card'}
@@ -602,58 +512,50 @@ export default function ReportCardsPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-bold text-gray-900">Report Card</h2>
-              <button onClick={() => setShowViewModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={() => setShowViewModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
 
-            {/* Student info */}
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
-                  <p className="text-gray-500">Student Name</p>
-                  <p className="font-semibold text-gray-900">
-                    {selectedCard.student?.profile?.first_name} {selectedCard.student?.profile?.last_name}
-                  </p>
+                  <p className="text-gray-500 text-xs">Student</p>
+                  <p className="font-semibold text-gray-900">{selectedCard.student?.profile?.first_name} {selectedCard.student?.profile?.last_name}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Student ID</p>
-                  <p className="font-semibold text-gray-900 font-mono">{selectedCard.student?.student_uid}</p>
+                  <p className="text-gray-500 text-xs">Student ID</p>
+                  <p className="font-semibold text-gray-900 font-mono text-xs">{selectedCard.student?.student_uid}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Class</p>
+                  <p className="text-gray-500 text-xs">Class</p>
                   <p className="font-semibold text-gray-900">{selectedCard.class?.name} {selectedCard.class?.section ?? ''}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Term</p>
+                  <p className="text-gray-500 text-xs">Term</p>
                   <p className="font-semibold text-gray-900">{selectedCard.term?.name}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Average Score</p>
+                  <p className="text-gray-500 text-xs">Average</p>
                   <p className="font-semibold text-gray-900">{selectedCard.average_score?.toFixed(1) ?? '—'}%</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Class Position</p>
+                  <p className="text-gray-500 text-xs">Position</p>
                   <p className="font-semibold text-gray-900">{selectedCard.class_position ?? '—'}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Attendance</p>
-                  <p className="font-semibold text-gray-900">
-                    {selectedCard.present_days ?? '—'} / {selectedCard.attendance_days ?? '—'} days
-                  </p>
+                  <p className="text-gray-500 text-xs">Attendance</p>
+                  <p className="font-semibold text-gray-900">{selectedCard.present_days ?? '—'} / {selectedCard.attendance_days ?? '—'} days</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Status</p>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  <p className="text-gray-500 text-xs">Status</p>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                     selectedCard.is_approved ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
                   }`}>
-                    {selectedCard.is_approved ? 'Approved' : 'Pending Approval'}
+                    {selectedCard.is_approved ? 'Approved' : 'Pending'}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Subject scores */}
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Subject Results</h3>
               <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
@@ -669,18 +571,8 @@ export default function ReportCardsPage() {
                   {selectedCard.report_card_subjects?.map((rcs) => (
                     <tr key={rcs.id}>
                       <td className="px-4 py-2 text-sm text-gray-900">{rcs.subject?.name}</td>
-                      <td className="px-4 py-2 text-sm font-medium text-gray-900">{rcs.score?.toFixed(1) ?? '—'}</td>
-                      <td className="px-4 py-2">
-                        <span className={`text-sm font-bold ${
-                          rcs.grade === 'A' ? 'text-green-600' :
-                          rcs.grade === 'B' ? 'text-blue-600' :
-                          rcs.grade === 'C' ? 'text-yellow-600' :
-                          rcs.grade === 'D' ? 'text-orange-600' :
-                          rcs.grade === 'F' ? 'text-red-600' : 'text-gray-400'
-                        }`}>
-                          {rcs.grade ?? '—'}
-                        </span>
-                      </td>
+                      <td className="px-4 py-2 text-sm font-medium">{rcs.score?.toFixed(1) ?? '—'}</td>
+                      <td className="px-4 py-2 text-sm"><span className={gradeColor(rcs.grade)}>{rcs.grade ?? '—'}</span></td>
                       <td className="px-4 py-2 text-sm text-gray-600">{rcs.teacher_remark ?? '—'}</td>
                     </tr>
                   ))}
@@ -688,30 +580,24 @@ export default function ReportCardsPage() {
               </table>
             </div>
 
-            {/* Remarks */}
             {selectedCard.class_teacher_remark && (
-              <div className="mb-3">
-                <p className="text-sm font-medium text-gray-700">Class Teacher's Remark</p>
-                <p className="text-sm text-gray-600 mt-1">{selectedCard.class_teacher_remark}</p>
+              <div className="mb-3 p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs font-medium text-gray-500">Class Teacher's Remark</p>
+                <p className="text-sm text-gray-700 mt-1">{selectedCard.class_teacher_remark}</p>
               </div>
             )}
             {selectedCard.principal_remark && (
-              <div className="mb-4">
-                <p className="text-sm font-medium text-gray-700">Principal's Remark</p>
-                <p className="text-sm text-gray-600 mt-1">{selectedCard.principal_remark}</p>
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs font-medium text-gray-500">Principal's Remark</p>
+                <p className="text-sm text-gray-700 mt-1">{selectedCard.principal_remark}</p>
               </div>
             )}
 
             <div className="flex gap-3">
               <button onClick={() => setShowViewModal(false)}
-                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
-                Close
-              </button>
-              <button
-                onClick={() => handleGeneratePDF(selectedCard.id)}
-                disabled={generating}
-                className="flex-1 px-4 py-2.5 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
+                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">Close</button>
+              <button onClick={() => handleGeneratePDF(selectedCard.id)} disabled={generating}
+                className="flex-1 px-4 py-2.5 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2">
                 <Download className="w-4 h-4" />
                 {generating ? 'Generating...' : 'Download PDF'}
               </button>
