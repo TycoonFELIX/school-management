@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   LayoutDashboard, Users, GraduationCap, BookOpen,
-  ClipboardList, BarChart2, Settings, LogOut, Menu, X,
-  Bell, School, Calendar, UserPlus, FileText, Megaphone, CreditCard
+  ClipboardList, BarChart2, Settings,
+  LogOut, Menu, X, Bell, School, Calendar, UserPlus, FileText, Megaphone
 } from 'lucide-react';
 import DashboardHome from './admin/DashboardHome';
 import TeachersPage from './admin/TeachersPage';
@@ -18,7 +18,6 @@ import ReportCardsPage from './admin/ReportCardsPage';
 import AnnouncementsPage from './admin/AnnouncementsPage';
 import AnalyticsPage from './admin/AnalyticsPage';
 import SettingsPage from './admin/SettingsPage';
-import BillingPage from './admin/BillingPage';
 
 const navigation = [
   { name: 'Dashboard',      icon: LayoutDashboard, page: 'dashboard' },
@@ -33,7 +32,6 @@ const navigation = [
   { name: 'Report Cards',   icon: BarChart2,       page: 'report-cards' },
   { name: 'Announcements',  icon: Megaphone,       page: 'announcements' },
   { name: 'Analytics',      icon: BarChart2,       page: 'analytics' },
-  { name: 'Billing',        icon: CreditCard,      page: 'billing' },
   { name: 'Settings',       icon: Settings,        page: 'settings' },
 ];
 
@@ -56,7 +54,6 @@ export default function SchoolAdminDashboard() {
       case 'report-cards':   return <ReportCardsPage />;
       case 'announcements':  return <AnnouncementsPage />;
       case 'analytics':      return <AnalyticsPage />;
-      case 'billing':        return <BillingPage />;
       case 'settings':       return <SettingsPage />;
       default: return (
         <div className="flex items-center justify-center h-64">
@@ -91,7 +88,7 @@ export default function SchoolAdminDashboard() {
           })}
         </nav>
         <div className="p-2 border-t border-gray-200">
-          <button onClick={signOut} className="w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
+          <button onClick={signOut} className="w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50">
             <LogOut className="w-5 h-5 flex-shrink-0" />
             {sidebarOpen && <span className="ml-3">Sign Out</span>}
           </button>
