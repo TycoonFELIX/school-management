@@ -227,13 +227,13 @@ export default function ReportCardsPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-report-card`,
+        `${(import.meta as any).env.VITE_SUPABASE_URL}/functions/v1/generate-report-card`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token}`,
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'apikey': (import.meta as any).env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({ report_card_id: reportCardId }),
         }
@@ -242,11 +242,11 @@ export default function ReportCardsPage() {
       if (result.pdf_url) {
         window.open(result.pdf_url, '_blank');
         fetchReportCards();
-        toast.success('PDF generated!');
+        toast.success('Report card opened!');
       } else {
-        toast.error('PDF generation failed: ' + (result.error ?? 'Unknown error'));
+        toast.error('Failed: ' + (result.error ?? 'Unknown error'));
       }
-    } catch (err: any) { toast.error('Error generating PDF: ' + err.message); }
+    } catch (err: any) { toast.error('Error: ' + err.message); }
     finally { setGenerating(false); }
   };
 

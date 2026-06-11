@@ -240,18 +240,17 @@ export default function StudentDashboard() {
   const downloadReport = async (rc: any) => {
     if (!rc.is_approved) { toast.error('Report not yet approved'); return; }
     if (rc.pdf_url) { window.open(rc.pdf_url, '_blank'); return; }
-
     setGenerating(rc.id);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-report-card`,
+        `${(import.meta as any).env.VITE_SUPABASE_URL}/functions/v1/generate-report-card`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token}`,
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'apikey': (import.meta as any).env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({ report_card_id: rc.id }),
         }
@@ -259,10 +258,10 @@ export default function StudentDashboard() {
       const result = await response.json();
       if (result.pdf_url) {
         window.open(result.pdf_url, '_blank');
-        await fetchReportCards(student.id);
+        if (student) await fetchReportCards(student.id);
         toast.success('Report card opened!');
       } else {
-        toast.error('Failed to generate: ' + (result.error ?? 'Unknown'));
+        toast.error('Failed: ' + (result.error ?? 'Unknown'));
       }
     } catch (err: any) { toast.error(err.message); }
     finally { setGenerating(null); }
